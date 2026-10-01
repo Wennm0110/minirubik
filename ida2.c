@@ -319,13 +319,25 @@ static void build_dist_os(void)
     }
 }
 
-static uint8_t h(uint16_t p, uint16_t o) {
-    return dist_p[p] > dist_o[o] ? dist_p[p] : dist_o[o];
+static uint8_t s_of(const state_t *st)
+{
+    uint8_t a = 0, b = 0;
+    for (uint8_t i = 0; i < CUBIES; ++i) {
+        if (st->p[i] == 0) a = i;   /* 角塊 0 在位置 i */
+        if (st->p[i] == 1) b = i;   /* 角塊 1 在位置 i */
+    }
+    return (uint8_t) (a * 7 + b);
 }
 
-static int dfs(uint16_t p, uint16_t o, uint8_t g, uint8_t bound, int last_face) {
+static uint8_t h(uint16_t p, uint16_t o, uint8_t s) {
+    uint8_t a = dist_p[p];
+    uint8_t b = dist_os[o*NS + s];        /* 用 o 和 s 組出編號 */
+    return a > b ? a : b;
+}
+
+static int dfs(uint16_t p, uint16_t o, uint8_t s, uint8_t g, uint8_t bound, int last_face) {
     nodes ++;
-    uint8_t est = h(p, o);
+    uint8_t est = h(p, o, s);
     if (bound < g + est)
         return 0;
     if(est == 0)
@@ -334,11 +346,13 @@ static int dfs(uint16_t p, uint16_t o, uint8_t g, uint8_t bound, int last_face) 
         if (last_face == face)
             continue;
         uint16_t np = p, no = o;
+        uint8_t ns = s;
         for ( int turn = 0 ; turn < 3 ; ++ turn ) {
             np = perm_move[face][np];
             no = orien_move[face][no];
+            ns = pos_move[face][ns];   
             path[g] = (uint8_t) (face * 3 + turn);
-            if (dfs(np, no, g + 1, bound, face))
+            if (dfs(np, no, ns, g + 1, bound, face))
                 return 1;
         }
     }
@@ -346,10 +360,10 @@ static int dfs(uint16_t p, uint16_t o, uint8_t g, uint8_t bound, int last_face) 
     return 0;
 }
 
-static int ida_star(uint16_t p, uint16_t o)
+static int ida_star(uint16_t p, uint16_t o, uint8_t s)
 {
-    for (uint8_t bound = h(p, o); bound <= 11; ++bound) {   /* E. 第一輪的 bound 從多少開始？ */
-        if (dfs(p, o, 0, bound, -1))
+    for (uint8_t bound = h(p, o, s); bound <= 11; ++bound) {   /* E. 第一輪的 bound 從多少開始？ */
+        if (dfs(p, o, s, 0, bound, -1))
             return bound;
     }
     return -1;
@@ -473,12 +487,17 @@ int main(int argc, char **argv)
         uint8_t *table = build_table(&diameter);
         build_dist_p();
         build_dist_o();
+        build_pos_move();
+        build_dist_os();
         uint32_t count = 0, worst_nodes = 0, worst_rank = 0;
         for (uint32_t r = 0; r < STATES; ++r) {
             if (depth_of(table, r) != 11)
                 continue;
             nodes = 0;
-            int len = ida_star((uint16_t) (r / ORIENTATIONS), (uint16_t) (r % ORIENTATIONS));
+            state_t st;
+            unrank_state(r, &st);
+            uint8_t s = s_of(&st);
+            int len = ida_star((uint16_t) (r / ORIENTATIONS), (uint16_t) (r % ORIENTATIONS), s);
             if (len != 11) {
                 printf("WRONG: rank %u got %d moves\n", r, len);
                 return 1;
@@ -507,8 +526,11 @@ int main(int argc, char **argv)
     build_dist_o();
     printf("h_o = %u\n", (unsigned) dist_o[rank_state(&state) % ORIENTATIONS]);
 
+    build_pos_move();
+    build_dist_os();
+
     uint32_t r = rank_state(&state);
-    int len = ida_star((uint16_t) (r / ORIENTATIONS), (uint16_t) (r % ORIENTATIONS));
+    int len = ida_star((uint16_t) (r / ORIENTATIONS), (uint16_t) (r % ORIENTATIONS), s_of(&state));
     printf("IDA*: %d moves, %u nodes:", len, nodes);
     for (int i = 0; i < len; ++i)
         printf(" %s", move_names[path[i]]);
