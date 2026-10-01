@@ -181,6 +181,8 @@ static uint8_t *build_table(uint8_t *diameter)
 
 static uint8_t dist_p[PERMUTATIONS];
 static uint16_t perm_move[3][PERMUTATIONS];
+static uint8_t dist_o[ORIENTATIONS];
+static uint16_t orien_move[3][ORIENTATIONS];
 
 static void build_dist_p(void)
 {
@@ -221,6 +223,46 @@ static void build_dist_p(void)
         }
     }
 }
+
+static void build_dist_o(void)
+{
+    
+    uint16_t queue[ORIENTATIONS];
+    uint32_t head = 0, tail = 0;
+    state_t state;
+
+
+
+    for (uint16_t rank = 0; rank < ORIENTATIONS; ++rank) {
+        unrank_state(rank, &state);
+        for (uint8_t face = 0; face < 3; ++face) {
+            state_t next = quarter_turn(state, face);
+            orien_move[face][rank] =
+                (uint16_t) (rank_state(&next) % ORIENTATIONS);
+        }
+    }
+
+    /* 2. 初始化：全部標成「還沒走過」，然後放入起點 */
+    memset(dist_o, 0xFF, sizeof dist_o);
+    dist_o[0] = 0;
+    queue[tail++] = 0;
+
+    /* 3. BFS */
+    while (head < tail) {
+        uint16_t here = queue[head++];
+        for (uint8_t face = 0; face < 3; ++face) {
+            uint16_t next = here;
+            for (uint8_t turn = 0; turn < 3; ++turn) {
+                next = orien_move[face][next];                    /* 查表：再轉一次 90° */
+                if (dist_o[next] == 0xFF) {
+                    dist_o[next] = dist_o[here] + 1;        /* 距離 = ? */
+                    queue[tail++] = next;
+                }
+            }
+        }
+    }
+}
+
 
 static int parse_state(const char *input, state_t *state)
 {
@@ -273,6 +315,7 @@ int main(int argc, char **argv)
         }
         uint8_t *table = build_table(&diameter);
         build_dist_p();
+        build_dist_o();
         uint32_t dcount[16] = {0};          /* 每個距離各幾個排列 */
         uint8_t  dmax = 0;
         for (uint16_t r = 0; r < PERMUTATIONS; ++r) {
@@ -287,6 +330,22 @@ int main(int argc, char **argv)
         for (uint8_t d = 0; d <= dmax; ++d)
             printf("dist_p %u: %u perms\n", (unsigned) d, (unsigned) dcount[d]);
         printf("dist_p max = %u\n", (unsigned) dmax);
+
+        dmax = 0;
+        memset(dcount, 0, sizeof dcount);
+        for (uint16_t r = 0; r < ORIENTATIONS; ++r) {
+            if (dist_o[r] == 0xFF) {        /* 沒走到 → 表沒填滿 */
+                fprintf(stderr, "dist_o[%u] unfilled\n", (unsigned) r);
+                return 1;
+            }
+            dcount[dist_o[r]]++;
+            if (dist_o[r] > dmax)                        /* 更新最大值 */
+                dmax = dist_o[r];
+        }
+        for (uint8_t d = 0; d <= dmax; ++d)
+            printf("dist_o %u: %u orien\n", (unsigned) d, (unsigned) dcount[d]);
+        printf("dist_o max = %u\n", (unsigned) dmax);
+
         for (uint8_t i = 0; i <= diameter; ++i)
             printf("level %u: %u states\n", (unsigned) i, (unsigned) level_count[i]);
         if (!table) {
@@ -309,6 +368,8 @@ int main(int argc, char **argv)
     }
     build_dist_p();
     printf("h_p = %u\n", (unsigned) dist_p[rank_state(&state) / ORIENTATIONS]);
+    build_dist_o();
+    printf("h_o = %u\n", (unsigned) dist_o[rank_state(&state) % ORIENTATIONS]);
     uint8_t *table = build_table(&diameter);
     if (!table) {
         fputs("could not build complete state table\n", stderr);
