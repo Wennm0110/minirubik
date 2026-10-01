@@ -179,6 +179,48 @@ static uint8_t *build_table(uint8_t *diameter)
     return toward_solved;
 }
 
+static uint8_t dist_p[PERMUTATIONS];
+static uint16_t perm_move[3][PERMUTATIONS];
+
+static void build_dist_p(void)
+{
+    
+    uint16_t queue[PERMUTATIONS];
+    uint32_t head = 0, tail = 0;
+    state_t state;
+
+    /* 1. 轉移表：從 build_table 把建 permutation[][] 的那個 for 迴圈
+          整段複製過來，把 permutation 改名成 perm_move */
+
+    for (uint16_t rank = 0; rank < PERMUTATIONS; ++rank) {
+        unrank_state((uint32_t) rank * ORIENTATIONS, &state);
+        for (uint8_t face = 0; face < 3; ++face) {
+            state_t next = quarter_turn(state, face);
+            perm_move[face][rank] =
+                (uint16_t) (rank_state(&next) / ORIENTATIONS);
+        }
+    }
+
+    /* 2. 初始化：全部標成「還沒走過」，然後放入起點 */
+    memset(dist_p, 0xFF, sizeof dist_p);
+    dist_p[0] = 0;
+    queue[tail++] = 0;
+
+    /* 3. BFS */
+    while (head < tail) {
+        uint16_t here = queue[head++];
+        for (uint8_t face = 0; face < 3; ++face) {
+            uint16_t next = here;
+            for (uint8_t turn = 0; turn < 3; ++turn) {
+                next = perm_move[face][next];                    /* 查表：再轉一次 90° */
+                if (dist_p[next] == 0xFF) {
+                    dist_p[next] = dist_p[here] + 1;        /* 距離 = ? */
+                    queue[tail++] = next;
+                }
+            }
+        }
+    }
+}
 
 static int parse_state(const char *input, state_t *state)
 {
@@ -230,6 +272,21 @@ int main(int argc, char **argv)
             return 1;
         }
         uint8_t *table = build_table(&diameter);
+        build_dist_p();
+        uint32_t dcount[16] = {0};          /* 每個距離各幾個排列 */
+        uint8_t  dmax = 0;
+        for (uint16_t r = 0; r < PERMUTATIONS; ++r) {
+            if (dist_p[r] == 0xFF) {        /* 沒走到 → 表沒填滿 */
+                fprintf(stderr, "dist_p[%u] unfilled\n", (unsigned) r);
+                return 1;
+            }
+            dcount[dist_p[r]]++;
+            if (dist_p[r] > dmax)                        /* 更新最大值 */
+                dmax = dist_p[r];
+        }
+        for (uint8_t d = 0; d <= dmax; ++d)
+            printf("dist_p %u: %u perms\n", (unsigned) d, (unsigned) dcount[d]);
+        printf("dist_p max = %u\n", (unsigned) dmax);
         for (uint8_t i = 0; i <= diameter; ++i)
             printf("level %u: %u states\n", (unsigned) i, (unsigned) level_count[i]);
         if (!table) {
@@ -250,6 +307,8 @@ int main(int argc, char **argv)
                 argc > 0 && argv[0] ? argv[0] : "solver");
         return 2;
     }
+    build_dist_p();
+    printf("h_p = %u\n", (unsigned) dist_p[rank_state(&state) / ORIENTATIONS]);
     uint8_t *table = build_table(&diameter);
     if (!table) {
         fputs("could not build complete state table\n", stderr);
