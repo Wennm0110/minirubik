@@ -1,14 +1,17 @@
     .equ    RENDER, 0
     .equ    LED_BASE, 0xf0000000
     .equ    DELAY, 20000
+    .equ    TEST_FIRST, 0       # 從第幾組開始
+    .equ    TEST_END, 3         # 跑到第幾組之前
     .text
 main:
     addi    sp, sp, -8
-    sw      x0, 0(sp)               # ti = 0
+    li      t0, TEST_FIRST
+    sw      t0, 0(sp)               # ti = 0
     sw      x0, 4(sp)               # passed = 0
 test_loop:
     lw      t0, 0(sp)               # t0 = ti
-    li      t1, 3
+    li      t1, TEST_END
     beq     t0, t1, all_done
     slli    t3, t0, 4
     sub     t3, t3, t0              # ti * 15
@@ -100,6 +103,10 @@ count_s_end:
     mv      a0, s6
     mv      a1, s7
     mv      a2, s8
+    la      a4, dist_p
+    la      a5, dist_os
+    la      a6, pf
+    la      a7, pt
     jal     h
     mv      s9, a0
 main_loop:
@@ -189,8 +196,7 @@ all_done:
 # 輸出：a0 = max(dist_p[p], dist_os[o*49 + s])
 h:
     # 1. 讀 dist_p[p]，存到某個 t 暫存器
-    la      t0, dist_p
-    add     t0, a0, t0
+    add     t0, a0, a4
     lbu     t0, 0(t0)
     # 2. 算出 o * 49
     slli    t1, a1, 5
@@ -200,8 +206,7 @@ h:
     # 3. 加上 s，得到 dist_os 的索引
     add     t1, t1, a2
     # 4. 讀 dist_os[索引]
-    la      t2, dist_os
-    add     t2, t2, t1
+    add     t2, t1, a5
     lbu     t1, 0(t2)
     # 5. 取兩者較大的放進 a0
     addi    a0, t0, 0
@@ -309,10 +314,8 @@ dfs_loop:
     sh      a0, 8(s0)
     sh      a1, 10(s0)
     sb      a2, 12(s0)
-    la      t0, pf
-    la      t1, pt
-    add     t0, t0, s1
-    add     t1, t1, s1
+    add     t0, a6, s1
+    add     t1, a7, s1
     sb      s3, 0(t0)
     sb      s4, 0(t1)
     # --- 書籤前進：T[g]++；到 3 就歸零、F[g]++ ---
@@ -325,9 +328,6 @@ dfs_loop:
     sb      t1, 6(s0)
     # --- nodes++；e = h(第 g+1 頁的 p, o, s) ---
     addi    s11, s11, 1
-    lhu     a0, 8(s0)
-    lhu     a1, 10(s0)
-    lbu     a2, 12(s0)
     jal     h
     mv      s5, a0 
     # --- if (g + 1 + e > bound) 回 dfs_loop ---
@@ -524,6 +524,7 @@ delay_loop_end:
     addi        sp, sp, 48
 led_ret:
     ret
+code_end:
 
     .data
 pages:  .zero 96           # 12 頁 × 8 bytes
@@ -543,7 +544,6 @@ tests:  .string "12345671111111"
         .string "23745612123332"
         .string "21345671111111"
 expect: .byte 0, 3, 11
-
 cp:     .byte 0, 0, 0, 0, 0, 0, 0, 7
 co:     .zero 8
 

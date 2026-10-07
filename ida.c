@@ -17,6 +17,9 @@ static uint8_t h(uint16_t p, uint16_t o, uint8_t s)
     return a > b ? a : b;
 }
 
+/* 除錯用追蹤輸出：預設關閉，用 gcc -DTRACE 編譯才會印。
+ * 量測時間與指令數時必須關閉，否則量到的是輸出的成本。 */
+#ifdef TRACE
 /* 除錯用：印出筆記本第 0 頁到第 top 頁，g 是手指位置 */
 static void dump(int g, int top, const uint16_t *P, const uint16_t *O,
                  const uint8_t *S, const uint8_t *F, const uint8_t *T,
@@ -33,6 +36,10 @@ static void dump(int g, int top, const uint16_t *P, const uint16_t *O,
             printf("  -  -\n");
     }
 }
+#define DUMP(...) dump(__VA_ARGS__)
+#else
+#define DUMP(...) ((void) 0)
+#endif
 
 
 static int dfs_iter(uint16_t p0, uint16_t o0, uint8_t s0, uint8_t bound) {
@@ -54,18 +61,18 @@ static int dfs_iter(uint16_t p0, uint16_t o0, uint8_t s0, uint8_t bound) {
     F[0] = 0;
     T[0] = 0;
     LF[0] = 3;
-    dump(0, 0, P, O, S, F, T, LF);
+    DUMP(0, 0, P, O, S, F, T, LF);
 
     while (g >= 0) {
         if (F[g] == 3) {
             g --;
-            if (g >= 0) dump(g, g, P, O, S, F, T, LF);
+            if (g >= 0) DUMP(g, g, P, O, S, F, T, LF);
             continue;
         }
 
         if (F[g] == LF[g]) {
             F[g] ++;
-            dump(g, g, P, O, S, F, T, LF);
+            DUMP(g, g, P, O, S, F, T, LF);
             continue;
         }
 
@@ -92,19 +99,19 @@ static int dfs_iter(uint16_t p0, uint16_t o0, uint8_t s0, uint8_t bound) {
         e = h(P[g + 1], O[g + 1], S[g + 1]);
 
         if (g + e + 1 > bound) {
-            dump(g, g + 1, P, O, S, F, T, LF);
+            DUMP(g, g + 1, P, O, S, F, T, LF);
             continue;
         }
 
         if (e == 0) {
-            dump(g, g + 1, P, O, S, F, T, LF);
+            DUMP(g, g + 1, P, O, S, F, T, LF);
             return 1;
         }
         g ++;
         F[g] = 0;
         T[g] = 0;
         LF[g] = f;
-        dump(g, g, P, O, S, F, T, LF);
+        DUMP(g, g, P, O, S, F, T, LF);
     }
 
     return 0;
